@@ -2,72 +2,70 @@ import os
 import subprocess
 from typing import Dict, Any
 from nodes.base import BaseNode
-from langchain_openai import ChatOpenAI
+from utils.safety import get_llm, extract_usage
 from utils.parser import parse_llm_json
 
 class CoderNode(BaseNode):
-    """
-    The Implementation Specialist.
-    Grafts code surgically to satisfy the Technical Spec and Test Contract.
-    """
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        # 1. Initialize Fast Model with Truncation Guard
-        model = ChatOpenAI(
-            model=os.getenv("FAST_MODEL"),
-            api_key=os.getenv("FAST_KEY"),
-            base_url=os.getenv("FAST_URL"),
-            max_tokens=int(os.getenv("MAX_OUTPUT_TOKENS", 4096)),
-            temperature=0
-        )
+        model = get_llm("FAST")
+        target = state['target_path']
+        branch = state.get('feature_branch', 'agent/patch')
+        
+        critique = state.get('surgical_critique', '')
+        feedback_block = f"\n### 🚨 FIX THESE ISSUES:\n{critique}\n" if critique else ""
 
-        # 2. Build the Surgical Implementation Prompt
         prompt = f"""
-You are a Senior Software Engineer performing a SURGICAL update.
+{feedback_block}
+TASK: Implement the files for this spec: {state.get('tech_spec')}
 
-### TECHNICAL SPECIFICATION:
-{state['tech_spec']}
+### ⚡️ CRITICAL FORMATTING RULE (MANDATORY):
+You MUST provide the code using Markdown headers for every single file. 
+DO NOT explain your work. DO NOT use JSON. DO NOT use generic titles.
 
-### TEST CONTRACT (Definition of Done):
-{state['test_spec']}
+Example:
+## app/main.py
+```python
+# code here
+```
 
-### PROJECT DNA:
-{state['env_context']}
-
-### CRITICAL RULES:
-1. DO NOT DELETE existing imports, safety checks, or directory setup logic.
-2. Maintain all existing setup code (os.makedirs, env validation).
-3. Return ONLY a valid JSON object. No conversational text.
-4. Output MUST be a flat dictionary: {{"path/to/file": "content_string"}}
-
-### TASK:
-Implement the files required by the Technical Specification.
-Ensure the code passes the Test Contract.
+## pyproject.toml
+```toml
+# config here
+```
 """
-        self.log("🚀 Implementing surgical code changes...")
+        self.log("🚀 Implementing code (Strict Markdown Mode)...")
         response = model.invoke(prompt)
+        usage = extract_usage(response)
         
         try:
-            generated_files = parse_llm_json(response.content)
-            target_path = state['target_path']
+            files = parse_llm_json(response.content)
             
-            # 3. Write Files to Workspace
-            for rel_path, content in generated_files.items():
-                full_path = os.path.join(target_path, rel_path)
+            # Ensure test contract is included
+            if state.get("test_spec"):
+                files["tests/agent_test.py"] = state["test_spec"]
+
+            # Ensure we are on the correct branch
+            subprocess.run(["git", "-C", target, "checkout", "-b", branch], capture_output=True)
+            
+            for rel_path, content in files.items():
+                full_path = os.path.join(target, rel_path)
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                with open(full_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                self.log(f"💾 Updated: {rel_path}")
-
-            # 4. Commit to local branch
-            branch = state.get('feature_branch', 'agent/fix-v2')
-            subprocess.run(["git", "-C", target_path, "add", "."], check=True)
-            subprocess.run(["git", "-C", target_path, "commit", "-m", "Agent: Implementation Round"], check=True)
-
+                with open(full_path, "w") as f: f.write(content)
+                self.log(f"💾 Grafted: {rel_path}")
+                
+            subprocess.run(["git", "-C", target, "add", "."], check=True)
+            subprocess.run(["git", "-C", target, "commit", "-m", "Agent: Implementation"], check=True)
+            
+            # Prepare snapshot for Reviewer
+            snapshot = "\n".join([f"FILE: {p}\n---\n{c}\n" for p, c in files.items()])
+            
             return {
-                "execution_logs": [f"Coder: {len(generated_files)} files modified."],
-                "usage": getattr(response, 'usage_metadata', {}),
-                "next_step": "reviewer"
+                "usage": usage,
+                "tech_spec": f"{state['tech_spec']}\n\n### CURRENT IMPLEMENTATION:\n{snapshot}",
+                "next_step": "reviewer",
+                "surgical_critique": "" 
             }
         except Exception as e:
-            self.log(f"❌ Coder Error/Truncation: {e}", level=40)
-            return {"circuit_breaker": True}
+            self.log(f"❌ Coder Formatting Error: {e}", level=40)
+            # We return to Coder to try one more time if it fails parsing
+            return {"next_step": "coder", "surgical_critique": "Your last response was not in the '## filename' format. Try again using EXACTLY that format."}

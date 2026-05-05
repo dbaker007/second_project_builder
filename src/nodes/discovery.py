@@ -1,38 +1,32 @@
-import re
+import os
+import subprocess
 from nodes.base import BaseNode
 from typing import Dict, Any
 
 class DiscoveryNode(BaseNode):
-    """
-    Identifies the project's tech stack, test tools, and existing diagrams.
-    """
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        content = state.get("codebase_summary", "")
+        target = state['target_path']
+        branch = state.get('feature_branch', 'main')
         
-        # 1. Detect Stack (DNA)
+        # 1. PHYSICAL SWITCH: Move to the branch we are actually working on
+        try:
+            subprocess.run(["git", "-C", target, "checkout", branch], capture_output=True)
+        except Exception:
+            pass # Fallback to main if branch doesn't exist yet (first turn)
+
+        # 2. Detect DNA from actual files on that branch
+        has_uv = os.path.exists(os.path.join(target, "pyproject.toml"))
+        has_py = any(f.endswith('.py') for r, d, files in os.walk(target) for f in files)
+        
         context = {
-            "language": "python" if "pyproject.toml" in content or ".py" in content else "unknown",
-            "manager": "uv" if "uv.lock" in content else "pip",
-            "test_runner": "pytest" if "pytest" in content or "tests/" in content else "unittest",
-            "has_readme": "README.md" in content
+            "language": "python" if has_py or has_uv else "unknown",
+            "manager": "uv" if has_uv else "pip",
+            "test_runner": "pytest" if os.path.exists(os.path.join(target, "tests")) else "unittest"
         }
 
-        # 2. Extract Existing Mermaid Diagrams
-        # Improved regex to handle various spacing and ensuring group 1 exists
-        mermaid_match = re.search(r"```mermaid\s*\n?(.*?)\n?```", content, re.DOTALL)
-        
-        # Check if match exists AND has a group 1
-        if mermaid_match and len(mermaid_match.groups()) >= 1:
-            context["existing_diagram"] = mermaid_match.group(1).strip()
-        else:
-            context["existing_diagram"] = None
-
-        self.log(f"🧬 DNA Detected: {context['language']} via {context['manager']}")
-        if context["existing_diagram"]:
-            self.log("🎨 Existing Mermaid diagram found in README.")
-
+        self.log(f"🧬 DNA Detected on {branch}: {context['language']} via {context['manager']}")
         return {
             "env_context": context,
-            "execution_logs": [f"Discovery: Stack identified as {context['language']}"],
+            "execution_logs": [f"Discovery: Found {context['language']} on {branch}."],
             "next_step": "architect"
         }

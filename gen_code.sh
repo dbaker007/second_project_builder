@@ -1,3 +1,8 @@
+#!/bin/bash
+# V2.31: Path-Strict Architect
+
+echo "📝 Updating ArchitectNode to enforce path alignment..."
+cat <<'EOF' > src/nodes/architect.py
 from typing import Dict, Any
 from nodes.base import BaseNode
 from utils.safety import get_llm, extract_usage
@@ -31,3 +36,4 @@ Specify the exact BASE_URL (e.g. http://localhost:8000/health)
             "usage": extract_usage(response),
             "next_step": "test_designer"
         }
+EOF

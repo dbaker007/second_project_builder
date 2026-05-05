@@ -2,7 +2,7 @@ import os
 import logging
 from typing import Any
 
-# Import Specialists
+# Specialist Imports
 from nodes.init import InitNode
 from nodes.discovery import DiscoveryNode
 from nodes.architect import ArchitectNode
@@ -18,6 +18,7 @@ logger = logging.getLogger("sentinel.factory")
 class NodeFactory:
     @staticmethod
     def get_node(node_type: str) -> Any:
+        # 1. Force a clean read of the env
         is_mock = os.getenv("AGENT_MOCK_MODE", "false").lower() == "true"
         
         node_map = {
@@ -32,27 +33,30 @@ class NodeFactory:
             "reporter": ReporterNode
         }
         
-        # KEY LOGIC: Init and Discovery should ALWAYS be real so we can see the repo.
-        if is_mock and node_type not in ["init", "discovery"]:
-            logger.info(f"🧪 Factory: Returning MOCK for '{node_type}'")
-            return MockNode(node_type)
-            
         node_class = node_map.get(node_type)
+        
         if not node_class:
-            raise ValueError(f"Unknown node type: {node_type}")
+            raise ValueError(f"❌ Factory Error: Node type '{node_type}' not found in map.")
+
+        # 2. Return REAL node if Mock Mode is off
+        if not is_mock:
+            return node_class()
             
-        return node_class()
+        # 3. If Mock Mode is ON, only Init/Discovery stay real
+        if node_type in ["init", "discovery"]:
+            return node_class()
+            
+        logger.info(f"🧪 Factory: Returning MOCK implementation for '{node_type}'")
+        return MockNode(node_type)
 
 class MockNode:
-    """A mock node that follows the V2 graph routing."""
+    """Standard V2 Mock Routing"""
     def __init__(self, node_name: str):
         self.node_name = node_name
         self.logger = logging.getLogger(f"agent.mock.{node_name}")
 
     def __call__(self, state: dict) -> dict:
         self.logger.info(f"▶ MOCK START: {self.node_name}")
-        
-        # V2 Sequential Routing
         routes = {
             "architect": "test_designer",
             "test_designer": "coder",
@@ -62,7 +66,6 @@ class MockNode:
             "pr_creator": "reporter",
             "reporter": "end"
         }
-        
         return {
             "execution_logs": [f"Mock: Simulated {self.node_name}"],
             "next_step": routes.get(self.node_name, "end")

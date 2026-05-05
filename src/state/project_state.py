@@ -1,34 +1,29 @@
-import operator
-from typing import Annotated, List, TypedDict, Dict, Any
+from typing import Annotated, TypedDict, List, Dict, Any
 
-def aggregate_usage(existing: Dict[str, int], new: Dict[str, int]) -> Dict[str, int]:
-    """Sums up token usage from the current turn into the global total."""
-    if not new:
-        return existing
-    return {
-        "total_tokens": existing.get("total_tokens", 0) + new.get("total_tokens", 0)
-    }
+def aggregate_usage(left: Dict[str, int], right: Dict[str, int]) -> Dict[str, int]:
+    """Sum up token counts safely."""
+    # Handle initialization where left might not be a dict yet
+    l = left if isinstance(left, dict) else {}
+    r = right if isinstance(right, dict) else {}
+    
+    new_usage = l.copy()
+    for key, value in r.items():
+        if isinstance(value, int):
+            new_usage[key] = new_usage.get(key, 0) + value
+    return new_usage
 
 class ProjectState(TypedDict):
-    # --- Git & Workspace ---
     repo_url: str
     target_path: str
     feature_branch: str
-    
-    # --- Context & Discovery ---
-    requirements_delta: str  # The diff between origin/main and current requirements
-    codebase_summary: str    # Cleaned context (no lockfiles)
-    env_context: Dict[str, Any] # Detected stack (Python, JS, etc.)
-    
-    # --- TDD & Architecture ---
-    tech_spec: str           # Architect's plan & Mermaid diagram
-    test_spec: str           # Test-Designer's pytest suite
-    
-    # --- Control & Routing ---
-    next_step: str           # Router signal
-    iteration_count: int     # Loop safety
-    circuit_breaker: bool    # True = System Failure, Stop Immediately
-    
-    # --- Telemetry ---
     usage: Annotated[Dict[str, int], aggregate_usage]
-    execution_logs: Annotated[List[str], operator.add]
+    env_context: Dict[str, Any]
+    requirements_delta: str
+    tech_spec: str
+    test_spec: str
+    file_impact: List[str]
+    surgical_critique: str
+    iteration_count: int
+    circuit_breaker: bool
+    execution_logs: Annotated[List[str], lambda x, y: x + y]
+    next_step: str

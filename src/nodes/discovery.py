@@ -18,9 +18,14 @@ class DiscoveryNode(BaseNode):
         }
 
         # 2. Extract Existing Mermaid Diagrams
-        # This helps the Architect maintain documentation continuity
-        mermaid_match = re.search(r"", content, re.DOTALL)
-        context["existing_diagram"] = mermaid_match.group(1) if mermaid_match else None
+        # Improved regex to handle various spacing and ensuring group 1 exists
+        mermaid_match = re.search(r"```mermaid\s*\n?(.*?)\n?```", content, re.DOTALL)
+        
+        # Check if match exists AND has a group 1
+        if mermaid_match and len(mermaid_match.groups()) >= 1:
+            context["existing_diagram"] = mermaid_match.group(1).strip()
+        else:
+            context["existing_diagram"] = None
 
         self.log(f"🧬 DNA Detected: {context['language']} via {context['manager']}")
         if context["existing_diagram"]:

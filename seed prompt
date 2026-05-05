@@ -1,0 +1,52 @@
+# MASTER SEED PROMPT: Sentinel Healer (V2)
+
+## 1. PROGRAM INTENT
+Sentinel Healer is an autonomous, repository-agnostic maintenance agent. It operates as a persistent daemon that monitors a project's `requirements.md` and implements features using a Test-Driven Development (TDD) cycle. It is designed for "Inception-level" stability, allowing it to maintain its own source code without destroying the orchestration infrastructure.
+
+## 2. RUNTIME ORCHESTRATION (THE HEARTBEAT)
+*   **Polling Strategy:** The entry point `src/main.py` must maintain a `while True` loop with a 30-second `time.sleep()`.
+*   **Activation Trigger:** The agent only executes the LangGraph when `git fetch origin main` followed by `git diff origin/main -- requirements.md` returns a non-empty delta.
+*   **Immutable Infrastructure:** The agent is strictly forbidden from refactoring the "Skeleton" (Env validation, log setup, heartbeat loop, and exit logic).
+
+## 3. THE NODE FACTORY (DEPENDENCY INJECTION)
+*   **Role:** All nodes must be instantiated via a `NodeFactory`.
+*   **Mock Enforcement:** If `AGENT_MOCK_MODE=true`, the factory MUST return Mock implementations for all API-calling nodes (Architect, Coder, PR-Creator). 
+*   **Safety:** This creates a hardware-level firewall between local development and production tokens.
+
+## 4. THE ARCHITECTURAL GRAPH (V2)
+```mermaid
+graph TD
+    A[Init Node] --> B[Discovery Node]
+    B --> C[Architect Node]
+    C --> D[Test-Designer Node]
+    D --> E[Coder Node]
+    E --> F[Reviewer Node]
+    
+    F -- "Needs Polish" --> E
+    F -- "LGTM" --> G[QA Node]
+    
+    G -- "Test Fail" --> E
+    G -- "Test Pass" --> H[PR-Creator]
+    
+    %% The Circuit Breaker Paths (System Errors)
+    E -- "System/Parse Error" --> I[Exit/Reporter]
+    F -- "System/Parse Error" --> I
+    G -- "System/Parse Error" --> I
+```
+
+## 5. NODE SPECIFICATIONS
+*   **Init/Discovery:** Syncs `origin/main` via `reset --hard`. Detects project DNA (stack/tooling).
+*   **Architect [Reasoning]:** Generates Technical Spec and Mermaid diagram.
+*   **Test-Designer [Reasoning]:** Generates `tests/agent_test.py` (The Contract) before code is written.
+*   **Coder [Fast]:** Surgical implementation. Returns flat JSON.
+*   **Reviewer [Reasoning]:** Validates standards and protects boilerplate.
+*   **QA:** Runs tests in a mock-safe environment.
+
+## 6. SYSTEM CONSTRAINTS (THE "NEVER" RULES)
+1.  **NEVER** use `eval()`; use `json.loads` with robust extraction.
+2.  **NEVER** retry System Errors. Use the Circuit Breaker to exit immediately.
+3.  **NEVER** ingest `uv.lock`, `.git`, or binary `logs/`.
+4.  **NEVER** allow the agent to modify the `BaseNode`, `NodeFactory`, or `ProjectState`.
+
+## 7. CONTINUITY PATTERN
+Every successful run must update the `README.md` with an updated Mermaid diagram and technical stack summary to serve as the agent's Long-Term Memory (LTM).

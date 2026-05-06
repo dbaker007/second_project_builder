@@ -1,14 +1,20 @@
 import os
-import sys
 import time
 import logging
 from dotenv import load_dotenv
-from engine import build_graph
+from src.engine import build_graph
 
-# Setup Logging
+# Setup Logging - Standard Professional Format
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(name)-18s | %(message)s", datefmt="%H:%M:%S")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)-18s | %(message)s",
+    datefmt="%H:%M:%S"
+)
+
+# Silence noisy external libraries
 for logger_name in ["gitingest", "httpx", "httpcore", "openai", "langchain", "urllib3"]:
     logging.getLogger(logger_name).setLevel(logging.WARNING)
 
@@ -16,42 +22,45 @@ logger = logging.getLogger("sentinel")
 load_dotenv()
 
 def main():
-    target = os.getenv("TARGET_PATH", "./targets/active_repo")
-    app = build_graph()
+    # 1. Configuration from .env
+    repo_url = os.getenv("REPO_URL")
+    # Resolve target_path relative to this project root
+    target = os.path.abspath(os.path.join(os.getcwd(), "targets/active_repo"))
     
-    cycles = 0
-    max_cycles = 2
-    
-    logger.info(f"🚀 Starting Sentinel (Limit: {max_cycles} cycles)...")
-    
-    while cycles < max_cycles:
-        cycles += 1
-        logger.info(f"🔄 --- STARTING CYCLE {cycles} ---")
-        
-        # Check if we should skip the wipe (Only wipe on Cycle 1)
-        skip_wipe = True if cycles > 1 and os.path.exists(os.path.join(target, ".git")) else False
-        
-        state = {
-            "repo_url": os.getenv("REPO_URL"),
-            "target_path": target,
-            "feature_branch": f"agent/fix-{int(time.time())}",
-            "iteration_count": 0,
-            "circuit_breaker": False,
-            "usage": {"total_tokens": 0},
-            "execution_logs": [f"Monitor: Cycle {cycles} starting."],
-            "skip_init_wipe": skip_wipe # Node can check this
-        }
-        
-        try:
-            app.invoke(state)
-            break # Exit loop if graph finishes (it handles its own inner loops)
-        except Exception as e:
-            logger.error(f"💥 Graph Crash: {e}")
-            if cycles < max_cycles:
-                logger.info("😴 Retrying in 5s...")
-                time.sleep(5)
+    if not repo_url:
+        logger.error("❌ REPO_URL not found in .env")
+        return
 
-    logger.info("🏁 Sentinel shutting down.")
+    # 2. Build the LangGraph
+    app = build_graph()
+    logger.info(f"🚀 Sentinel initializing for: {repo_url}")
+
+    # 3. Initial State - Single Pass Contract
+    state = {
+        "repo_url": repo_url,
+        "target_path": target,
+        "feature_branch": f"agent/surgical-{int(time.time())}",
+        "requirements_delta": "",
+        "env_context": {"package_name": "project_manager"}, # Default pkg hint
+        "tech_spec": "",
+        "file_impact": [],
+        "test_command": "",
+        "surgical_critique": "",
+        "iteration_count": 0,
+        "circuit_breaker": False,
+        "usage": {"total_tokens": 0},
+        "execution_logs": ["Init: Watcher pass started."],
+        "next_step": "cloner" 
+    }
+
+    # 4. Execution
+    try:
+        logger.info(f"📂 Targeting path: {target}")
+        app.invoke(state)
+    except Exception as e:
+        logger.error(f"💥 Graph Execution Failed: {e}")
+
+    logger.info("🏁 Watcher pass complete.")
 
 if __name__ == "__main__":
     main()

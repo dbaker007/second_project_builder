@@ -6,41 +6,34 @@ def build_graph():
     workflow = StateGraph(ProjectState)
     factory = NodeFactory()
 
-    for node in ["init", "discovery", "architect", "test_designer", "coder", "reviewer", "qa", "pr_creator", "reporter"]:
-        workflow.add_node(node, factory.get_node(node))
+    # Register Nodes
+    workflow.add_node("cloner", factory.get_node("cloner"))
+    workflow.add_node("monitor", factory.get_node("monitor"))
+    workflow.add_node("planner", factory.get_node("planner"))
+    workflow.add_node("coder", factory.get_node("coder"))
+    workflow.add_node("qa", factory.get_node("qa"))
+    workflow.add_node("pusher", factory.get_node("pusher"))
+    workflow.add_node("reporter", factory.get_node("reporter"))
 
-    workflow.set_entry_point("init")
-    workflow.add_edge("init", "discovery")
-    workflow.add_edge("discovery", "architect")
-    workflow.add_edge("architect", "test_designer")
-    workflow.add_edge("test_designer", "coder")
-    workflow.add_edge("coder", "reviewer")
+    # Define Linear Path
+    workflow.set_entry_point("cloner")
+    workflow.add_edge("cloner", "monitor")
+    workflow.add_edge("monitor", "planner")
+    workflow.add_edge("planner", "coder")
+    workflow.add_edge("coder", "qa")
 
-    def reviewer_router(state):
-        # HARD TERMINATION: Max 2 laps
-        if state.get("iteration_count", 0) >= 5:
-            return "reporter"
-        if state.get("next_step") == "coder":
-            return "coder"
-        return "qa"
+    # Conditional Routing for Loops
+    workflow.add_conditional_edges(
+        "qa",
+        lambda x: x["next_step"],
+        {
+            "pusher": "pusher",
+            "coder": "coder",
+            "reporter": "reporter"
+        }
+    )
 
-    workflow.add_conditional_edges("reviewer", reviewer_router, {
-        "coder": "coder",
-        "qa": "qa",
-        "reporter": "reporter"
-    })
-
-    def qa_router(state):
-        if state.get("next_step") == "pr_creator":
-            return "pr_creator"
-        return "coder"
-
-    workflow.add_conditional_edges("qa", qa_router, {
-        "pr_creator": "pr_creator",
-        "coder": "coder"
-    })
-
-    workflow.add_edge("pr_creator", "reporter")
+    workflow.add_edge("pusher", "reporter")
     workflow.add_edge("reporter", END)
 
     return workflow.compile()

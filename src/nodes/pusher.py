@@ -1,4 +1,3 @@
-cat << 'EOF' > src/nodes/pusher.py
 import os
 import subprocess
 import hashlib
@@ -69,4 +68,3 @@ class PusherNode(BaseNode):
             self.log(f"⚠️ Pusher/PR failed: {e}", level=30)
 
         return {"next_step": "reporter"}
-EOF

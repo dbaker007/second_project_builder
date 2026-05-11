@@ -2,24 +2,27 @@ import re
 import json
 import logging
 
+logger = logging.getLogger("agent.utils.parser")
+
 def parse_llm_json(raw_content: str):
-    cleaned = raw_content.strip()
-    files = {}
-    # Matches ## path/to/file followed by ```code```
-    file_pattern = r"(?:#+)\s*`?([\w\.\/\-_ ]+)`?\s*?\n\s*?```[a-z]*\n(.*?)\n```"
-    matches = list(re.finditer(file_pattern, cleaned, re.IGNORECASE | re.DOTALL))
+    """
+    Extracts JSON from LLM responses, handling 'Thinking' blocks, 
+    markdown code fences, and conversational noise.
+    """
+    # 1. Strip DeepSeek/R1 thinking blocks
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
     
-    for m in matches:
-        path, content = m.group(1).strip(), m.group(2)
-        if "." in path or "/" in path:
-            files[path] = content
-            
-    if files: return files
-    
-    # Fallback for structured JSON
-    json_match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
-    if json_match:
-        try: return json.loads(json_match.group(1))
-        except: pass
-        
-    return {"main_output": cleaned}
+    # 2. Try to find JSON inside markdown code blocks
+    code_block_match = re.search(r"```json\s*(.*?)\s*```", cleaned, re.DOTALL)
+    if code_block_match:
+        content_to_parse = code_block_match.group(1)
+    else:
+        # 3. Fallback: Find the first '{' and last '}'
+        json_match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
+        content_to_parse = json_match.group(1) if json_match else cleaned
+
+    try:
+        return json.loads(content_to_parse)
+    except json.JSONDecodeError:
+        logger.warning("⚠️ Failed to parse JSON. Returning raw content as main_output.")
+        return {"main_output": cleaned}

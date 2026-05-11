@@ -1,46 +1,64 @@
+import logging
 import os
 import subprocess
+import re
 from nodes.base import BaseNode
+
 
 class QANode(BaseNode):
     def execute(self, state: dict):
-        target = state['target_path']
-        test_cmd = state.get('test_command', 'uv run python -m pytest')
-        iters = state.get('iteration_count', 0)
-        
-        self.log(f"🧪 QA: Preparing environment (Attempt {iters})")
+        target = state["target_path"]
 
-        # Environment Hardening
-        env = os.environ.copy()
-        ca_bundle = "/opt/homebrew/lib/python3.14/site-packages/certifi/cacert.pem"
-        env["SSL_CERT_FILE"] = ca_bundle
-        env["UV_CERT_BUNDLE"] = ca_bundle
+        # 🛡️ Establish the import bridge
+        test_env = os.environ.copy()
+        test_env["PYTHONPATH"] = os.path.join(target, "src")
 
-        # 📦 BOOTSTRAP: Ensure pytest exists in the target sandbox
-        # We use 'uv add --dev' to inject it into the target's environment
-        self.log("📦 Ensuring pytest is installed in target...")
-        subprocess.run(["uv", "add", "--dev", "pytest"], cwd=target, env=env, capture_output=True)
+        self.log(f"🧪 QA: Verifying Full Suite")
 
-        # 🏃 Execute Test Suite
-        self.log(f"🏃 Running: {test_cmd}")
-        result = subprocess.run(
-            test_cmd.split(),
-            cwd=target,
-            env=env,
-            capture_output=True,
-            text=True
-        )
+        try:
+            # 1. Execute Tests
+            result = subprocess.run(
+                ["uv", "run", "pytest"],
+                cwd=target,
+                capture_output=True,
+                text=True,
+                env=test_env,
+            )
 
-        if result.returncode == 0:
-            self.log("✅ QA Passed.")
-            return {"next_step": "pusher", "surgical_critique": None}
-        
-        if iters < 3:
-            self.log(f"❌ Failed. Sending feedback to Coder ({iters}/3)", level=30)
+            output = f"{result.stdout}\n{result.stderr}"
+
+            # 2. Check for "No tests found" (Anti-cheating)
+            if (
+                "no tests ran" in output.lower()
+                or "collected 0 items" in output.lower()
+            ):
+                self.log("⚠️ No tests found.", logging.ERROR)
+                return {
+                    "next_step": "coder",
+                    "qa_passed": False,
+                    "surgical_critique": "QA System: No tests were found. You must implement behavioral tests in the 'tests/' directory that verify the logic.",
+                }
+
+            # 3. Binary Success: Does the suite pass?
+            if result.returncode == 0:
+                self.log("✅ QA Passed.")
+                return {
+                    "next_step": "pusher",
+                    "qa_passed": True,
+                    "surgical_critique": "",  # Clears breaker in BaseNode
+                }
+
+            # 4. Failure Branch
+            self.log("❌ QA Failed.", logging.WARNING)
             return {
                 "next_step": "coder",
-                "surgical_critique": f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
-                "iteration_count": 1
+                "qa_passed": False,
+                "surgical_critique": output,
             }
-        
-        return {"next_step": "reporter", "circuit_breaker": True}
+
+        except Exception as e:
+            self.log(f"💥 QA Crash: {e}", logging.ERROR)
+            return {
+                "next_step": "reporter",
+                "surgical_critique": f"QA EXECUTION ERROR: {str(e)}",
+            }

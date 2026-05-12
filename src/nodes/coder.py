@@ -34,14 +34,18 @@ class CoderNode(BaseNode):
                 f"CRITICAL: The ARCHITECT'S CRITIQUE proves your previous technical assumptions were WRONG. "
                 f"You must find a different way to satisfy the TEST CONTRACT while adhering to the 8 PROTOCOLS.\n\n"
             )
-
-        # 3. Combined Final Instruction
         return (
             f"{revision_logic}"
             f"{noop_protocol}"
             f"PHASE GOAL: {state.get('tech_spec')}\n"
             f"TEST CONTRACT: {state.get('test_spec')}\n\n"
-            f"STRICT ARCHITECTURAL PROTOCOLS:\n{ENGINEERING_PROTOCOLS}\n"
+            f"STRICT ARCHITECTURAL PROTOCOLS:\n{ENGINEERING_PROTOCOLS}\n\n"
+            f"MANDATORY IMPLEMENTATION RULES (NON-NEGOTIABLE):\n"
+            f"- Use absolute imports ONLY (e.g., 'from package.module import ...').\n"
+            f"- Use explicit 'with sqlite3.connect(...) as conn:' blocks for every DB operation.\n"
+            f"- NEVER use @contextmanager decorators for database connections.\n"
+            f"- Map database rows to Dataclasses or TypedDicts IMMEDIATELY. Never return raw tuples or use row[0] indexing.\n"
+            f"- Every DB initialization MUST be followed by a behavioral test (INSERT then SELECT) to verify state change.\n"
         ).strip()
 
     def execute(self, state: dict):

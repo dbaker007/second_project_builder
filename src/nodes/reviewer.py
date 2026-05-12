@@ -46,7 +46,6 @@ class ReviewerNode(BaseNode):
 
                 JSON FORMAT:
                 {{
-                    "approved": true/false,
                     "violated_protocols": [1, 2], 
                     "critique": "Identify the specific breach or root cause of failure.",
                     "suggestions": ["Specific refactor steps to satisfy the protocols."]
@@ -57,7 +56,7 @@ class ReviewerNode(BaseNode):
         response = model.invoke(prompt)
         review = parse_llm_json(response.content)
 
-        if review.get("approved", False):
+        if not review.get("violated_protocols", []):
             self.log("✅ Review Passed.")
             return {"next_step": "environment", "usage": extract_usage(response)}
         else:
